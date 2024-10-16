@@ -15,44 +15,44 @@ library(textshape)
 
 #Metaphlan to phylosec function
 metaphlanToPhyloseq <- function(
-      tax,
-      metadat=NULL,
-      simplenames=TRUE,
-      roundtointeger=FALSE,
-      split="|"){
-   ## tax is a matrix or data.frame with the table of taxonomic abundances, rows are taxa, columns are samples
-   ## metadat is an optional data.frame of specimen metadata, rows are samples, columns are variables
-   ## if simplenames=TRUE, use only the most detailed level of taxa names in the final object
-   ## if roundtointeger=TRUE, values will be rounded to the nearest integer
-   xnames = rownames(tax)
-   shortnames = gsub(paste0(".+\\", split), "", xnames)
-   if(simplenames){
-      rownames(tax) = shortnames
-   }
-   if(roundtointeger){
-      tax = round(tax * 1e4)
-   }
-   x2 = strsplit(xnames, split=split, fixed=TRUE)
-   taxmat = matrix(NA, ncol=max(sapply(x2, length)), nrow=length(x2))
-   colnames(taxmat) = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Strain")[1:ncol(taxmat)]
-   rownames(taxmat) = rownames(tax)
-   for (i in 1:nrow(taxmat)){
-      taxmat[i, 1:length(x2[[i]])] <- x2[[i]]
-   }
-   taxmat = gsub("[a-z]__", "", taxmat)
-   taxmat = phyloseq::tax_table(taxmat)
-   otutab = phyloseq::otu_table(tax, taxa_are_rows=TRUE)
-   if(is.null(metadat)){
-      res = phyloseq::phyloseq(taxmat, otutab)
-   }else{
-      res = phyloseq::phyloseq(taxmat, otutab, phyloseq::sample_data(metadat))
-   }
-   return(res)
+    tax,
+    metadat=NULL,
+    simplenames=TRUE,
+    roundtointeger=FALSE,
+    split="|"){
+  ## tax is a matrix or data.frame with the table of taxonomic abundances, rows are taxa, columns are samples
+  ## metadat is an optional data.frame of specimen metadata, rows are samples, columns are variables
+  ## if simplenames=TRUE, use only the most detailed level of taxa names in the final object
+  ## if roundtointeger=TRUE, values will be rounded to the nearest integer
+  xnames = rownames(tax)
+  shortnames = gsub(paste0(".+\\", split), "", xnames)
+  if(simplenames){
+    rownames(tax) = shortnames
+  }
+  if(roundtointeger){
+    tax = round(tax * 1e4)
+  }
+  x2 = strsplit(xnames, split=split, fixed=TRUE)
+  taxmat = matrix(NA, ncol=max(sapply(x2, length)), nrow=length(x2))
+  colnames(taxmat) = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Strain")[1:ncol(taxmat)]
+  rownames(taxmat) = rownames(tax)
+  for (i in 1:nrow(taxmat)){
+    taxmat[i, 1:length(x2[[i]])] <- x2[[i]]
+  }
+  taxmat = gsub("[a-z]__", "", taxmat)
+  taxmat = phyloseq::tax_table(taxmat)
+  otutab = phyloseq::otu_table(tax, taxa_are_rows=TRUE)
+  if(is.null(metadat)){
+    res = phyloseq::phyloseq(taxmat, otutab)
+  }else{
+    res = phyloseq::phyloseq(taxmat, otutab, phyloseq::sample_data(metadat))
+  }
+  return(res)
 }
 
 #Loading data
 
-load("~/Documents/Metabolic_Diseases/Updated_Human3/NAFLD_O_L/R_Datasets/Updated_NAFLD_O_L_Metaphlan3_Clinical_Data.RData")
+load("Documents/Phd/HKI_PC/Metabolic_Diseases/Updated_Human3/NAFLD_O_L/R_Datasets/Updated_NAFLD_O_L_Metaphlan3_Clinical_Data.RData")
 
 
 ##### Data Prep ####
@@ -99,15 +99,15 @@ full_features =  full_features[which(rownames(full_features) %in% rownames(full_
 # creating the phyloseq data
 physeq <- metaphlanToPhyloseq(t(full_features))
 SAM <-  sample_data(data.frame(full_metadata))
-TREE <- read_tree("~/Documents/Metabolic_Diseases/Updated_Human3/Metaphlan_3_parsed_species_only.nwk")
+TREE <- read_tree("Documents/Phd/HKI_PC/Metabolic_Diseases/Updated_Human3/Metaphlan_3_parsed_species_only.nwk")
 physeq <- merge_phyloseq(physeq, SAM, TREE)
 
 SAM = sample_data(physeq) %>% data.frame(.)
 
-#### Weighted Unifrac PCOA ####
+#### Weighted Unifrac NMDS ####
 
 set.seed(123)
-ord_w_unifrac <- ordinate(physeq, method="PCoA", distance="unifrac", weighted=TRUE)
+ord_w_unifrac <- ordinate(physeq, method="NMDS", distance="unifrac", weighted=TRUE)
 dist_Wunifrac <- phyloseq::distance(physeq, method = "wunifrac")
 
 
@@ -115,50 +115,54 @@ adonis_Wnifrac_treat <- adonis2(dist_Wunifrac ~  Age + Gender + BMI + HOMAIR + S
                                 method = 'wunifrac',by = "terms")
 adonis_Wnifrac_treat
 
+scores<- ord_w_unifrac %>% 
+  vegan::scores(.)%>% 
+  as.data.frame() %>% 
+  dplyr::select(1,2)
+
 ## GG plot
 ggplot_df <-
-   data.frame(PCoA_1 = ord_w_unifrac$vectors[,1],
-              PCoA_2 = ord_w_unifrac$vectors[,2],
-              Groups = SAM$Groups) %>% 
-   group_by(Groups) %>% 
-   summarise_each(funs(mean,sd,se=sd(.)/sqrt(n()))) %>%
-   rename(.,PCoA_1 = PCoA_1_mean,PCoA_2 = PCoA_2_mean,SE_1 = PCoA_1_se,SE_2 = PCoA_2_se)
-
-ord_w_unifrac$values$Eigenvalues[1]/sum(ord_w_unifrac$values$Eigenvalues)
-ord_w_unifrac$values$Eigenvalues[2]/sum(ord_w_unifrac$values$Eigenvalues)
-
+  data.frame(PCoA_1 = scores$NMDS1,
+             PCoA_2 = scores$NMDS1,
+             Groups = SAM$Groups) %>% 
+  group_by(Groups) %>% 
+  summarise_each(funs(mean,sd,se=sd(.)/sqrt(n()))) %>%
+  rename(.,PCoA_1 = PCoA_1_mean,PCoA_2 = PCoA_2_mean,SE_1 = PCoA_1_se,SE_2 = PCoA_2_se)
 
 pcoa_wunifrac_beta_div <-ggplot(ggplot_df, aes(x=PCoA_1, y=PCoA_2,colour = Groups, label = Groups)) + 
-   geom_errorbar(aes(ymin=PCoA_2 - SE_2, ymax=PCoA_2 + SE_2),linetype = 1,size =1.5,width = 0.001) +
-   geom_errorbar(aes(xmin=PCoA_1 - SE_1, xmax=PCoA_1 + SE_1),linetype = 1,size =1.5,width = 0.001) +
-   geom_label(size = 8) + 
-   scale_color_manual(values=c("#d86b6f","#6182a8", "#d86b6f", "#6182a8")) +
-   theme_classic() +
-   theme(plot.title = element_text(size = 14, hjust = 0.5),  text = element_text(size = 15),
-         legend.position="none",
-         axis.text.x=element_blank(), #remove x axis labels
-         axis.ticks.x=element_blank(), #remove x axis ticks
-         axis.text.y=element_blank(),  #remove y axis labels
-         axis.ticks.y=element_blank(),
-         panel.border = element_rect(colour = "black", fill=NA, size=2),
-         axis.title=element_text(size=20)
-   ) +
-   annotate("text", x = -0.02, y = 0.03, label = paste(("P value = "),adonis_Wnifrac_treat$`Pr(>F)`[6]),size=8) +
-   annotate("text", x = -0.02, y = 0.027, label = paste(("R² = 0.04")),size=8,) +
-   labs(x = "PCoA 1 44%",
-        y = "PCoA 2 13%") 
+  geom_errorbar(aes(ymin=PCoA_2 - SE_2, ymax=PCoA_2 + SE_2),linetype = 1,size =1.5,width = 0.001) +
+  geom_errorbar(aes(xmin=PCoA_1 - SE_1, xmax=PCoA_1 + SE_1),linetype = 1,size =1.5,width = 0.001) +
+  geom_label(size = 8) + 
+  scale_color_manual(values=c("#d86b6f","#6182a8", "#d86b6f", "#6182a8")) +
+  theme_classic() +
+  theme(plot.title = element_text(size = 14, hjust = 0.5),  text = element_text(size = 15),
+        legend.position="none",
+        axis.text.x=element_blank(), #remove x axis labels
+        axis.ticks.x=element_blank(), #remove x axis ticks
+        axis.text.y=element_blank(),  #remove y axis labels
+        axis.ticks.y=element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=2),
+        axis.title=element_text(size=20)
+  ) +
+  annotate("text", x = -0.02, y = 0.03, label = paste(("P value = "),adonis_Wnifrac_treat$`Pr(>F)`[6]),size=8) +
+  annotate("text", x = -0.026, y = 0.035, label = paste(("R² = 0.05")),size=8,) +
+  labs(x = "NDMS 1",
+       y = "NMDS 2") 
 
+pdf("Documents/Phd/Metabolic_Diseases/Submissions/Cell/Supplementary Figures/S_Figure_2.pdf", width = 15, height = 10)
+pcoa_wunifrac_beta_div
+dev.off()
+
+pcoa_wunifrac_beta_div
 
 ##Adonis Function for each single group vs another single group to test beta diversity between them
 
 adonis_new <- function(Metadata) {
   
-  Metadata = full_metadata %>% 
-    dplyr::filter(Groups == "NAFLD-O" | Groups == "NAFLD-L")
   Features =  full_features[which(rownames(full_features) %in% rownames(Metadata)),]
   new_physeq <- metaphlanToPhyloseq(t(Features))
   new_SAM <-  sample_data(data.frame(Metadata))
-  new_TREE <- read_tree("~/Documents/Metabolic_Diseases/Updated_Human3/Metaphlan_3_parsed_species_only.nwk")
+  new_TREE <- read_tree("Users/manosnychas/Documents/Phd/HKI_PC/Metabolic_Diseases/Updated_Human3/Metaphlan_3_parsed_species_only.nwk")
   new_physeq <- merge_phyloseq(new_physeq, new_SAM, new_TREE)
   
   new_SAM = sample_data(new_physeq) %>% data.frame(.)
@@ -172,9 +176,6 @@ adonis_new <- function(Metadata) {
   
   return(new_adonis_Wnifrac_treat)
 }
-
-
-
 
 
 Nafld_O_vs_L <- 
